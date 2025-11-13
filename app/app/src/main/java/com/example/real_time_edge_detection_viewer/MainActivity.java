@@ -13,6 +13,7 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CameraManager;
 import android.media.Image;
 import android.media.ImageReader;
+import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -34,6 +35,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_CAMERA_PERMISSION = 100;
 
     private TextureView textureView;
+    private GLSurfaceView glSurfaceView;
+    private GLRenderer glRenderer;
+
     private TextView tvDebug;
 
     private CameraDevice cameraDevice;
@@ -47,29 +51,48 @@ public class MainActivity extends Activity {
 
     private final Size PREVIEW_SIZE = new Size(1280, 720);
 
+    // Load native libs
     static {
+        System.loadLibrary("opencv_java4");
         System.loadLibrary("native-lib");
     }
 
-    // Native function to process YUV frame data
+    // Native processing of NV21 frame
     public native void nativeProcessFrame(byte[] yuv, int width, int height);
+
+    // Native OpenGL bridge
+    public static native void nativeInitGL();
+    public static native void nativeDestroyGL();
+    public static native void nativeOnResume();
+    public static native void nativeOnPause();
+    public static native ByteBuffer nativeGetProcessedFrameBuffer();
+    public static native int nativeGetProcessedFrameWidth();
+    public static native int nativeGetProcessedFrameHeight();
 
 
     // ---------------------------------------------------------------------------------------------
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         textureView = findViewById(R.id.texture_view);
+        glSurfaceView = findViewById(R.id.glSurfaceView);  // NEW
         tvDebug = findViewById(R.id.tv_debug);
+
+        // Setup GL
+        glSurfaceView.setEGLContextClientVersion(2);
+        glRenderer = new GLRenderer();
+        glSurfaceView.setRenderer(glRenderer);
+        glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+
+        // Initialize native GL (texture buffer etc.)
+        nativeInitGL();
 
         textureView.setSurfaceTextureListener(surfaceTextureListener);
     }
 
     // ---------------------------------------------------------------------------------------------
-
     private final TextureView.SurfaceTextureListener surfaceTextureListener =
             new TextureView.SurfaceTextureListener() {
                 @Override
@@ -84,7 +107,6 @@ public class MainActivity extends Activity {
             };
 
     // ---------------------------------------------------------------------------------------------
-
     private void openCamera() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -131,7 +153,6 @@ public class MainActivity extends Activity {
     }
 
     // ---------------------------------------------------------------------------------------------
-
     private final CameraDevice.StateCallback cameraStateCallback =
             new CameraDevice.StateCallback() {
                 @Override
@@ -177,7 +198,6 @@ public class MainActivity extends Activity {
                                         backgroundHandler
                                 );
 
-                                // FIXED: update UI from main thread
                                 runOnUiThread(() -> tvDebug.setText("Camera Started"));
 
                             } catch (Exception e) {
@@ -201,7 +221,6 @@ public class MainActivity extends Activity {
     }
 
     // ---------------------------------------------------------------------------------------------
-
     private final ImageReader.OnImageAvailableListener onImageAvailableListener =
             reader -> {
                 Image image = reader.acquireLatestImage();
@@ -210,36 +229,39 @@ public class MainActivity extends Activity {
                 int w = image.getWidth();
                 int h = image.getHeight();
 
-                Image.Plane[] planes = image.getPlanes();
-
-                ByteBuffer y = planes[0].getBuffer();
-                ByteBuffer u = planes[1].getBuffer();
-                ByteBuffer v = planes[2].getBuffer();
-
-                // Convert YUV_420_888 → NV21 (needed for simple JNI pass)
                 byte[] nv21 = YUV_420_888_to_NV21(image);
 
+                // Send frame to native OpenCV
                 nativeProcessFrame(nv21, w, h);
-
 
                 image.close();
             };
 
     // ---------------------------------------------------------------------------------------------
-
     @Override
     protected void onResume() {
         super.onResume();
         startBackgroundThread();
+        glSurfaceView.onResume();
+        nativeOnResume();
+
         if (textureView.isAvailable())
             openCamera();
     }
 
     @Override
     protected void onPause() {
+        nativeOnPause();
+        glSurfaceView.onPause();
         closeCamera();
         stopBackgroundThread();
         super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        nativeDestroyGL();
+        super.onDestroy();
     }
 
     private void startBackgroundThread() {
@@ -266,7 +288,6 @@ public class MainActivity extends Activity {
     }
 
     // ---------------------------------------------------------------------------------------------
-
     @Override
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
@@ -280,6 +301,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show();
         }
     }
+
     private byte[] YUV_420_888_to_NV21(Image image) {
         byte[] nv21;
         ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
@@ -292,14 +314,12 @@ public class MainActivity extends Activity {
 
         nv21 = new byte[ySize + uSize + vSize];
 
-        // Y channel
+        // Y
         yBuffer.get(nv21, 0, ySize);
-
-        // VU channel
+        // VU
         vBuffer.get(nv21, ySize, vSize);
         uBuffer.get(nv21, ySize + vSize, uSize);
 
         return nv21;
     }
-
 }
