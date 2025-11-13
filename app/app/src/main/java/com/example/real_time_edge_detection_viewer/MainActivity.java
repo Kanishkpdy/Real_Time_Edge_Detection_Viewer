@@ -47,6 +47,14 @@ public class MainActivity extends Activity {
 
     private final Size PREVIEW_SIZE = new Size(1280, 720);
 
+    static {
+        System.loadLibrary("native-lib");
+    }
+
+    // Native function to process YUV frame data
+    public native void nativeProcessFrame(byte[] yuv, int width, int height);
+
+
     // ---------------------------------------------------------------------------------------------
 
     @Override
@@ -199,7 +207,20 @@ public class MainActivity extends Activity {
                 Image image = reader.acquireLatestImage();
                 if (image == null) return;
 
-                Log.d(TAG, "Frame: " + image.getWidth() + "x" + image.getHeight());
+                int w = image.getWidth();
+                int h = image.getHeight();
+
+                Image.Plane[] planes = image.getPlanes();
+
+                ByteBuffer y = planes[0].getBuffer();
+                ByteBuffer u = planes[1].getBuffer();
+                ByteBuffer v = planes[2].getBuffer();
+
+                // Convert YUV_420_888 → NV21 (needed for simple JNI pass)
+                byte[] nv21 = YUV_420_888_to_NV21(image);
+
+                nativeProcessFrame(nv21, w, h);
+
 
                 image.close();
             };
@@ -259,4 +280,26 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show();
         }
     }
+    private byte[] YUV_420_888_to_NV21(Image image) {
+        byte[] nv21;
+        ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
+        ByteBuffer uBuffer = image.getPlanes()[1].getBuffer();
+        ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
+
+        int ySize = yBuffer.remaining();
+        int uSize = uBuffer.remaining();
+        int vSize = vBuffer.remaining();
+
+        nv21 = new byte[ySize + uSize + vSize];
+
+        // Y channel
+        yBuffer.get(nv21, 0, ySize);
+
+        // VU channel
+        vBuffer.get(nv21, ySize, vSize);
+        uBuffer.get(nv21, ySize + vSize, uSize);
+
+        return nv21;
+    }
+
 }
