@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "system",
+    "outFile": "dist/bundle.js",
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "include": ["main.ts"]
+}

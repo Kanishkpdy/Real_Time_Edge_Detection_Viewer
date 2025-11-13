@@ -1,0 +1,32 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #eee;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+#container {
+    text-align: center;
+}
+
+#frame {
+    width: 80%;
+    max-width: 800px;
+    border: 2px solid #444;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+#stats {
+    font-size: 18px;
+    margin-top: 10px;
+    background: #222;
+    padding: 10px 20px;
+    border-radius: 10px;
+    display: inline-block;
+}
