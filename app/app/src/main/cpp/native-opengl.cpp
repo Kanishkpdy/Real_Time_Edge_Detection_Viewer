@@ -20,6 +20,7 @@ static std::mutex bufferMutex;
 // ------------------------------------------------------------------------------------------
 extern "C"
 void update_processed_from_gray(unsigned char* gray, int width, int height) {
+    
     std::lock_guard<std::mutex> lock(bufferMutex);
 
     int sizeRGBA = width * height * 4;

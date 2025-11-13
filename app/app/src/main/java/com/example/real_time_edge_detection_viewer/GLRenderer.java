@@ -52,7 +52,11 @@ public class GLRenderer implements GLSurfaceView.Renderer {
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+        // NEW — prevents flicker / garbage when app is split
+        GLES20.glClearColor(0f, 0f, 0f, 1f);
     }
+
 
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
@@ -150,10 +154,18 @@ public class GLRenderer implements GLSurfaceView.Renderer {
 
     // fragment shader samples the RGBA texture
     private final String FRAGMENT_SHADER =
-            "precision mediump float;\n" +
-            "varying vec2 vTexCoord;\n" +
-            "uniform sampler2D uTexture;\n" +
-            "void main() {\n" +
-            "  gl_FragColor = texture2D(uTexture, vTexCoord);\n" +
-            "}\n";
+        "precision mediump float;\n" +
+        "varying vec2 vTexCoord;\n" +
+        "uniform sampler2D uTexture;\n" +
+        "void main() {\n" +
+        "  if (vTexCoord.y < 0.5) {\n" +
+        "    // TOP: Original feed (grayscale reconstructed from edge buffer)\n" +
+        "    vec4 edge = texture2D(uTexture, vec2(vTexCoord.x, vTexCoord.y * 2.0));\n" +
+        "    gl_FragColor = vec4(edge.r, edge.r, edge.r, 1.0);\n" +
+        "  } else {\n" +
+        "    // BOTTOM: Edge detection result (already RGBA)\n" +
+        "    gl_FragColor = texture2D(uTexture, vec2(vTexCoord.x, (vTexCoord.y - 0.5) * 2.0));\n" +
+        "  }\n" +
+        "}\n";
+
 }

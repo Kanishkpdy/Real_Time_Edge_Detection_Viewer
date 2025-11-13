@@ -5,20 +5,15 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
-import android.hardware.camera2.CameraAccessException;
-import android.hardware.camera2.CameraCaptureSession;
-import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraDevice;
-import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.*;
 import android.media.Image;
 import android.media.ImageReader;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.util.Log;
 import android.util.Size;
+import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
 import android.widget.TextView;
@@ -31,13 +26,11 @@ import java.util.Arrays;
 
 public class MainActivity extends Activity {
 
-    private static final String TAG = "MainActivity";
     private static final int REQUEST_CAMERA_PERMISSION = 100;
 
     private TextureView textureView;
     private GLSurfaceView glSurfaceView;
     private GLRenderer glRenderer;
-
     private TextView tvDebug;
 
     private CameraDevice cameraDevice;
@@ -51,16 +44,15 @@ public class MainActivity extends Activity {
 
     private final Size PREVIEW_SIZE = new Size(1280, 720);
 
-    // Load native libs
+    // Native libs
     static {
         System.loadLibrary("opencv_java4");
         System.loadLibrary("native-lib");
     }
 
-    // Native processing of NV21 frame
+    // Native functions
     public native void nativeProcessFrame(byte[] yuv, int width, int height);
 
-    // Native OpenGL bridge
     public static native void nativeInitGL();
     public static native void nativeDestroyGL();
     public static native void nativeOnResume();
@@ -69,35 +61,35 @@ public class MainActivity extends Activity {
     public static native int nativeGetProcessedFrameWidth();
     public static native int nativeGetProcessedFrameHeight();
 
-
     // ---------------------------------------------------------------------------------------------
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         textureView = findViewById(R.id.texture_view);
-        glSurfaceView = findViewById(R.id.glSurfaceView);  // NEW
+        glSurfaceView = findViewById(R.id.glSurfaceView);
         tvDebug = findViewById(R.id.tv_debug);
 
-        // Setup GL
+        // GL setup
         glSurfaceView.setEGLContextClientVersion(2);
         glRenderer = new GLRenderer();
         glSurfaceView.setRenderer(glRenderer);
         glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 
-        // Initialize native GL (texture buffer etc.)
         nativeInitGL();
 
         textureView.setSurfaceTextureListener(surfaceTextureListener);
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Surface available
     private final TextureView.SurfaceTextureListener surfaceTextureListener =
             new TextureView.SurfaceTextureListener() {
                 @Override
                 public void onSurfaceTextureAvailable(SurfaceTexture st, int width, int height) {
-                    runOnUiThread(() -> tvDebug.setText("Texture Ready"));
+                    tvDebug.setText("Texture Ready");
                     openCamera();
                 }
 
@@ -111,16 +103,19 @@ public class MainActivity extends Activity {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
 
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.CAMERA},
+                    REQUEST_CAMERA_PERMISSION
+            );
             return;
         }
 
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-
         try {
-            String cameraId = getBackCamera(manager);
-            if (cameraId == null) {
+            CameraManager mgr = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            String camId = getBackCamera(mgr);
+
+            if (camId == null) {
                 Toast.makeText(this, "No back camera found", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -134,16 +129,16 @@ public class MainActivity extends Activity {
 
             imageReader.setOnImageAvailableListener(onImageAvailableListener, backgroundHandler);
 
-            manager.openCamera(cameraId, cameraStateCallback, backgroundHandler);
+            mgr.openCamera(camId, cameraStateCallback, backgroundHandler);
 
         } catch (Exception e) {
-            Log.e(TAG, "openCamera error: ", e);
+            Log.e("CAMERA", "openCamera: ", e);
         }
     }
 
-    private String getBackCamera(CameraManager manager) throws CameraAccessException {
-        for (String id : manager.getCameraIdList()) {
-            Integer facing = manager.getCameraCharacteristics(id)
+    private String getBackCamera(CameraManager mgr) throws CameraAccessException {
+        for (String id : mgr.getCameraIdList()) {
+            Integer facing = mgr.getCameraCharacteristics(id)
                     .get(CameraCharacteristics.LENS_FACING);
 
             if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK)
@@ -158,7 +153,7 @@ public class MainActivity extends Activity {
                 @Override
                 public void onOpened(CameraDevice cd) {
                     cameraDevice = cd;
-                    runOnUiThread(() -> tvDebug.setText("Camera Opened"));
+                    tvDebug.setText("Camera Opened");
                     startPreview();
                 }
 
@@ -186,56 +181,54 @@ public class MainActivity extends Activity {
                         public void onConfigured(CameraCaptureSession session) {
                             captureSession = session;
 
-                            try {
-                                previewRequestBuilder.set(
-                                        CaptureRequest.CONTROL_AF_MODE,
-                                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                                );
+                            previewRequestBuilder.set(
+                                    CaptureRequest.CONTROL_AF_MODE,
+                                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                            );
 
+                            try {
                                 captureSession.setRepeatingRequest(
                                         previewRequestBuilder.build(),
                                         null,
                                         backgroundHandler
                                 );
-
-                                runOnUiThread(() -> tvDebug.setText("Camera Started"));
-
+                                tvDebug.setText("Camera Started");
                             } catch (Exception e) {
-                                Log.e(TAG, "startPreview error", e);
+                                Log.e("PREVIEW", "startPreview error", e);
                             }
                         }
 
                         @Override
                         public void onConfigureFailed(CameraCaptureSession session) {
-                            runOnUiThread(() ->
-                                    Toast.makeText(MainActivity.this,
-                                            "Camera config failed", Toast.LENGTH_SHORT).show());
+                            Toast.makeText(MainActivity.this,
+                                    "Camera config failed",
+                                    Toast.LENGTH_SHORT).show();
                         }
                     },
                     backgroundHandler
             );
 
         } catch (Exception e) {
-            Log.e(TAG, "startPreview error", e);
+            Log.e("PREVIEW", "startPreview error", e);
         }
     }
 
     // ---------------------------------------------------------------------------------------------
-    private final ImageReader.OnImageAvailableListener onImageAvailableListener =
-            reader -> {
-                Image image = reader.acquireLatestImage();
-                if (image == null) return;
+    private final ImageReader.OnImageAvailableListener onImageAvailableListener = reader -> {
+        Image img = reader.acquireLatestImage();
+        if (img == null) return;
 
-                int w = image.getWidth();
-                int h = image.getHeight();
+        int w = img.getWidth();
+        int h = img.getHeight();
 
-                byte[] nv21 = YUV_420_888_to_NV21(image);
+        byte[] nv21 = YUV_420_888_to_NV21(img);
 
-                // Send frame to native OpenCV
-                nativeProcessFrame(nv21, w, h);
+        nativeProcessFrame(nv21, w, h);   // OpenCV + edge detection
 
-                image.close();
-            };
+        glSurfaceView.requestRender();    // IMPORTANT – draw processed frame
+
+        img.close();
+    };
 
     // ---------------------------------------------------------------------------------------------
     @Override
@@ -245,8 +238,7 @@ public class MainActivity extends Activity {
         glSurfaceView.onResume();
         nativeOnResume();
 
-        if (textureView.isAvailable())
-            openCamera();
+        if (textureView.isAvailable()) openCamera();
     }
 
     @Override
@@ -264,6 +256,7 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    // ---------------------------------------------------------------------------------------------
     private void startBackgroundThread() {
         backgroundThread = new HandlerThread("CameraBG");
         backgroundThread.start();
@@ -273,8 +266,7 @@ public class MainActivity extends Activity {
     private void stopBackgroundThread() {
         if (backgroundThread != null) {
             backgroundThread.quitSafely();
-            try { backgroundThread.join(); }
-            catch (Exception ignored) {}
+            try { backgroundThread.join(); } catch (Exception ignored) {}
 
             backgroundThread = null;
             backgroundHandler = null;
@@ -282,19 +274,22 @@ public class MainActivity extends Activity {
     }
 
     private void closeCamera() {
-        if (captureSession != null) { captureSession.close(); captureSession = null; }
-        if (cameraDevice != null) { cameraDevice.close(); cameraDevice = null; }
-        if (imageReader != null) { imageReader.close(); imageReader = null; }
+        if (captureSession != null) captureSession.close();
+        if (cameraDevice != null) cameraDevice.close();
+        if (imageReader != null) imageReader.close();
+        captureSession = null;
+        cameraDevice = null;
+        imageReader = null;
     }
 
     // ---------------------------------------------------------------------------------------------
     @Override
     public void onRequestPermissionsResult(
-            int requestCode, String[] permissions, int[] grantResults) {
+            int requestCode, String[] permissions, int[] results) {
 
         if (requestCode == REQUEST_CAMERA_PERMISSION &&
-                grantResults.length > 0 &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                results.length > 0 &&
+                results[0] == PackageManager.PERMISSION_GRANTED) {
 
             openCamera();
         } else {
@@ -302,23 +297,21 @@ public class MainActivity extends Activity {
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
     private byte[] YUV_420_888_to_NV21(Image image) {
-        byte[] nv21;
-        ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
-        ByteBuffer uBuffer = image.getPlanes()[1].getBuffer();
-        ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
+        ByteBuffer y = image.getPlanes()[0].getBuffer();
+        ByteBuffer u = image.getPlanes()[1].getBuffer();
+        ByteBuffer v = image.getPlanes()[2].getBuffer();
 
-        int ySize = yBuffer.remaining();
-        int uSize = uBuffer.remaining();
-        int vSize = vBuffer.remaining();
+        int ySize = y.remaining();
+        int uSize = u.remaining();
+        int vSize = v.remaining();
 
-        nv21 = new byte[ySize + uSize + vSize];
+        byte[] nv21 = new byte[ySize + uSize + vSize];
 
-        // Y
-        yBuffer.get(nv21, 0, ySize);
-        // VU
-        vBuffer.get(nv21, ySize, vSize);
-        uBuffer.get(nv21, ySize + vSize, uSize);
+        y.get(nv21, 0, ySize);
+        v.get(nv21, ySize, vSize);
+        u.get(nv21, ySize + vSize, uSize);
 
         return nv21;
     }

@@ -2,26 +2,47 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Hidden TextureView (camera needs it) -->
+    <!-- Hidden TextureView (camera input only) -->
     <TextureView
         android:id="@+id/texture_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="gone" />
 
-    <!-- Our fullscreen OpenGL output -->
-    <android.opengl.GLSurfaceView
-        android:id="@+id/glSurfaceView"
+    <!-- Vertical split layout -->
+    <LinearLayout
+        android:id="@+id/splitLayout"
+        android:orientation="vertical"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent">
 
-    <!-- Debug label -->
+        <!-- TOP: Original camera preview? -->
+        <!-- (If you want to show camera at top later replace this with TextureView) -->
+        <SurfaceView
+            android:id="@+id/camPreview"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#000" />
+
+        <!-- BOTTOM: OpenGL processed output -->
+        <android.opengl.GLSurfaceView
+            android:id="@+id/glSurfaceView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#111" />
+    </LinearLayout>
+
+    <!-- Debug text overlay -->
     <TextView
         android:id="@+id/tv_debug"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="18dp"
+        android:text="Debug..."
         android:textColor="#00FF00"
-        android:padding="16dp" />
+        android:textSize="18sp"
+        android:padding="16dp"
+        android:layout_marginTop="20dp" />
 
 </FrameLayout>
